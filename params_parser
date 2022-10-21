@@ -1,0 +1,66 @@
+#include "params_parser.h"
+#include "parser_exceptions.h"
+using namespace std;
+
+
+
+map<string, string> ParseParams(const string& params) {
+    map<string, string> dict;
+    std::string_view params_view = params;
+    string_view::size_type pos = 0;
+    const string DELIMITERS = " \t\n\v";
+
+    auto skip_delim = [&DELIMITERS, &params_view](string_view::size_type pos) {
+        //if (DELIMITERS.find_first_of(params_view[pos]) != DELIMITERS.npos) //пропуск разделителей
+        if (pos < params_view.size())
+            pos = params_view.find_first_not_of(DELIMITERS, pos);
+        return pos;
+    };
+
+    auto parse_lexem = [&params_view, &DELIMITERS](string_view::size_type pos){
+        string_view value_lex;
+        bool flag_quotes = false;
+        if (flag_quotes = (params_view[pos] == '\"')) {
+            auto pos_quotes = params_view.find_first_of( '\"',pos + 1);
+            if (pos_quotes == params_view.npos)
+                throw MissingQuotesException(static_cast<string> (params_view), ParamsChunk{pos, params_view.size()});
+            value_lex = params_view.substr(pos + 1 ,pos_quotes  - (pos + 1));
+            pos = pos + 2 + value_lex.size();
+        } else {
+            auto pos_sep = params_view.find_first_of(DELIMITERS + "\"", pos);
+            value_lex = params_view.substr(pos, pos_sep - pos);
+            pos += value_lex.size();
+            if (params_view[pos] == '\"')
+                throw std::exception();
+        }
+        return tuple(value_lex, pos, flag_quotes);
+    };
+
+    while ((pos = skip_delim(pos)) < params_view.size())
+    {
+        string_view value = "", name;
+        /// parse name
+        bool flag_quotes_name = false;
+        tie(name, pos, flag_quotes_name) = parse_lexem(pos);
+        if (name[0] != '/')
+            throw UnexpectedValueException(params, ParamsChunk{pos - name.size() - 2 * flag_quotes_name, pos});
+        if (name.size() == 1) {
+            throw MissingParameterNameException(params, ParamsChunk{pos - name.size(), pos} );
+        }
+        string name_str = static_cast<string>(name.substr(1));
+        if (dict.find(name_str) != dict.end())
+            throw SpecifiedTwiceParameterException(params, ParamsChunk{pos - name.size() - 2 * flag_quotes_name, pos});
+        ///parse value
+        bool flag_quotes_value = false;
+        if (((pos = skip_delim(pos)) >= params_view.size()) || (params_view[pos] == '/') )
+            value = "";
+        else
+            tie(value,pos,flag_quotes_value) = parse_lexem(pos);
+
+        string value_str = static_cast<string> (value);
+
+        dict.insert({name_str, value_str});
+
+    }
+    return dict;
+}
